@@ -1,0 +1,16 @@
+{
+  "name": "alpaca-dashboard",
+  "version": "1.0.0",
+  "description": "Stock options analytics dashboard powered by Alpaca Market Data API",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "devDependencies": {
+    "vercel": "^33.0.0"
+  }
+}
