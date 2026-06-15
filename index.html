@@ -337,12 +337,23 @@ async function buildPriceChart(sym, base) {
   if (isLive) {
     try {
       const r = await fetch(`/api/bars?symbol=${sym}&timeframe=${currentTF}&limit=${currentLimit}`);
-      if (r.ok) { const d = await r.json(); bars = d.bars; }
-    } catch (e) {}
+      const d = await r.json();
+      console.log('API response:', d);
+      if (r.ok && d.bars && d.bars.length > 0) {
+        bars = d.bars;
+        console.log('Using real API bars:', bars.slice(0, 3));
+      }
+    } catch (e) {
+      console.error('Fetch error:', e);
+    }
   }
 
-  if (!bars || bars.length === 0) bars = generateMockBars(base, currentLimit, currentTF);
-  console.log('Building price chart with', bars.length, 'bars');
+  if (!bars || bars.length === 0) {
+    console.log('No API data, using mock bars');
+    bars = generateMockBars(base, currentLimit, currentTF);
+  }
+  
+  console.log('Final bars for render:', bars.slice(0, 3));
   renderCandleChart(bars);
 }
 
@@ -553,17 +564,35 @@ function renderCandleChart(rawBars) {
 
 function generateMockBars(base, count, tf) {
   const bars = [];
-  let p = base * 0.93;
   const now = Date.now();
   const tfMs = tf === '1Day' ? 86400000 : tf === '1Hour' ? 3600000 : 300000;
-  for (let i = count; i >= 0; i--) {
-    const o = +(p * (0.998 + Math.random() * 0.004)).toFixed(2);
-    const c = +(o * (0.991 + Math.random() * 0.018)).toFixed(2);
-    const h = +(Math.max(o, c) * (1 + Math.random() * 0.008)).toFixed(2);
-    const l = +(Math.min(o, c) * (1 - Math.random() * 0.008)).toFixed(2);
-    bars.push({ t: new Date(now - i * tfMs).toISOString(), o, h, l, c, v: Math.round(Math.random() * 500000) });
-    p = c;
+  
+  // Generate prices starting from a lower point and walking forward
+  let p = base * 0.94;
+  const prices = [];
+  for (let i = 0; i < count; i++) {
+    // Random walk: move price by ±2% max
+    p = p * (0.98 + Math.random() * 0.04);
+    prices.push(p);
   }
+  
+  // Now create OHLC bars from the price walk
+  prices.forEach((close, i) => {
+    const open = i === 0 ? base * 0.94 : prices[i - 1];
+    const high = Math.max(open, close) * (1 + Math.random() * 0.015);
+    const low = Math.min(open, close) * (1 - Math.random() * 0.015);
+    const volume = Math.round(1000000 + Math.random() * 2000000);
+    
+    bars.push({
+      t: new Date(now - (count - i - 1) * tfMs).toISOString(),
+      o: +open.toFixed(2),
+      h: +high.toFixed(2),
+      l: +low.toFixed(2),
+      c: +close.toFixed(2),
+      v: volume
+    });
+  });
+  
   return bars;
 }
 
