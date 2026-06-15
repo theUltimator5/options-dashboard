@@ -359,28 +359,29 @@ async function buildPriceChart(sym, base) {
 
 function renderCandleChart(rawBars) {
   const canvas = document.getElementById('candleCanvas');
-  if (!canvas) return;
+  if (!canvas) {
+    console.error('Canvas not found!');
+    return;
+  }
 
-  // Normalize API fields in case your backend uses open/high/low/close instead of o/h/l/c
+  // Normalize and validate bars
   const bars = rawBars
     .map(b => ({
-      t: b.t || b.timestamp || b.time,
-      o: Number(b.o ?? b.open),
-      h: Number(b.h ?? b.high),
-      l: Number(b.l ?? b.low),
-      c: Number(b.c ?? b.close),
-      v: Number(b.v ?? b.volume ?? 0)
+      t: b.t || b.timestamp,
+      o: Number(b.o || b.open),
+      h: Number(b.h || b.high),
+      l: Number(b.l || b.low),
+      c: Number(b.c || b.close),
+      v: Number(b.v || b.volume || 0)
     }))
-    .filter(b =>
-      Number.isFinite(b.o) &&
-      Number.isFinite(b.h) &&
-      Number.isFinite(b.l) &&
-      Number.isFinite(b.c)
-    );
+    .filter(b => !isNaN(b.o) && !isNaN(b.h) && !isNaN(b.l) && !isNaN(b.c) && b.o > 0);
 
-  console.table(bars.slice(0, 5));
+  console.log('Normalized bars sample:', bars.slice(0, 2));
 
-  if (bars.length < 2) return;
+  if (bars.length < 2) {
+    console.warn('Not enough valid bars:', bars.length);
+    return;
+  }
 
   const parent = canvas.parentElement;
   const rect = parent.getBoundingClientRect();
@@ -396,16 +397,10 @@ function renderCandleChart(rawBars) {
 
   const w = rect.width;
   const h = rect.height;
-
   ctx.clearRect(0, 0, w, h);
 
-  const padding = {
-    top: 12,
-    right: 54,
-    bottom: 24,
-    left: 8
-  };
-
+  // Layout
+  const padding = { top: 12, right: 54, bottom: 24, left: 50 };
   const gap = 10;
   const volumeHeight = Math.round(h * 0.22);
   const priceTop = padding.top;
@@ -419,14 +414,17 @@ function renderCandleChart(rawBars) {
   const chartRight = w - padding.right;
   const chartWidth = chartRight - chartLeft;
 
+  // Get price range from HIGH/LOW (not close)
   const highs = bars.map(b => b.h);
   const lows = bars.map(b => b.l);
-  const vols = bars.map(b => b.v || 0);
+  const vols = bars.map(b => b.v);
 
   let minPrice = Math.min(...lows);
   let maxPrice = Math.max(...highs);
+  
+  console.log('Raw price range:', minPrice, '-', maxPrice);
 
-  // Add padding so candles do not touch top/bottom
+  // Add 8% padding
   const priceRangeRaw = maxPrice - minPrice || 1;
   const pricePad = priceRangeRaw * 0.08;
   minPrice -= pricePad;
@@ -435,21 +433,19 @@ function renderCandleChart(rawBars) {
   const priceRange = maxPrice - minPrice;
   const maxVol = Math.max(...vols) || 1;
 
+  console.log('Adjusted price range:', minPrice, '-', maxPrice);
+  console.log('Max volume:', maxVol);
+
   const xStep = chartWidth / bars.length;
   const candleWidth = Math.max(2, Math.min(12, xStep * 0.62));
 
-  const priceToY = price => {
-    return priceTop + ((maxPrice - price) / priceRange) * priceHeight;
-  };
+  // Scale functions
+  const priceToY = price => priceTop + ((maxPrice - price) / priceRange) * priceHeight;
+  const volumeToHeight = volume => (volume / maxVol) * (volumeHeight * 0.9);
 
-  const volumeToHeight = volume => {
-    return (volume / maxVol) * (volumeHeight * 0.9);
-  };
-
-  // Background grid
+  // Draw price gridlines
   ctx.strokeStyle = 'rgba(255,255,255,0.06)';
   ctx.lineWidth = 1;
-
   for (let i = 0; i <= 4; i++) {
     const y = priceTop + (priceHeight / 4) * i;
     ctx.beginPath();
@@ -458,14 +454,14 @@ function renderCandleChart(rawBars) {
     ctx.stroke();
   }
 
-  // Divider between price and volume
+  // Divider
   ctx.strokeStyle = 'rgba(255,255,255,0.10)';
   ctx.beginPath();
   ctx.moveTo(chartLeft, priceBottom);
   ctx.lineTo(chartRight, priceBottom);
   ctx.stroke();
 
-  // Volume bars
+  // Draw volume bars
   bars.forEach((bar, i) => {
     const x = chartLeft + i * xStep + xStep / 2;
     const volH = volumeToHeight(bar.v);
@@ -475,15 +471,10 @@ function renderCandleChart(rawBars) {
       ? 'rgba(50,255,126,0.28)'
       : 'rgba(255,140,66,0.28)';
 
-    ctx.fillRect(
-      x - candleWidth / 2,
-      volumeBottom - volH,
-      candleWidth,
-      volH
-    );
+    ctx.fillRect(x - candleWidth / 2, volumeBottom - volH, candleWidth, volH);
   });
 
-  // Candles
+  // Draw candles
   bars.forEach((bar, i) => {
     const x = chartLeft + i * xStep + xStep / 2;
     const up = bar.c >= bar.o;
@@ -507,28 +498,18 @@ function renderCandleChart(rawBars) {
     const bodyHeight = Math.max(1, Math.abs(closeY - openY));
 
     if (up) {
-      // Hollow/outlined green candle
+      // Hollow green
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.2;
-      ctx.strokeRect(
-        x - candleWidth / 2,
-        bodyTop,
-        candleWidth,
-        bodyHeight
-      );
+      ctx.strokeRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
     } else {
-      // Filled red candle
+      // Filled orange
       ctx.fillStyle = color;
-      ctx.fillRect(
-        x - candleWidth / 2,
-        bodyTop,
-        candleWidth,
-        bodyHeight
-      );
+      ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
     }
   });
 
-  // Price labels on right
+  // Price labels (right axis)
   ctx.fillStyle = '#777';
   ctx.font = '10px system-ui';
   ctx.textAlign = 'left';
@@ -540,14 +521,13 @@ function renderCandleChart(rawBars) {
     ctx.fillText('$' + price.toFixed(2), chartRight + 8, y);
   }
 
-  // Time labels
+  // Time labels (bottom)
   ctx.fillStyle = '#666';
   ctx.font = '10px system-ui';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
 
   const labelStep = Math.max(1, Math.floor(bars.length / 6));
-
   bars.forEach((bar, i) => {
     if (i % labelStep !== 0) return;
 
@@ -560,6 +540,8 @@ function renderCandleChart(rawBars) {
     const x = chartLeft + i * xStep + xStep / 2;
     ctx.fillText(label, x, volumeBottom + 6);
   });
+
+  console.log('Chart rendered successfully');
 }
 
 function generateMockBars(base, count, tf) {
