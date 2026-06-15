@@ -346,179 +346,209 @@ async function buildPriceChart(sym, base) {
   renderCandleChart(bars);
 }
 
-function renderCandleChart(bars) {
+function renderCandleChart(rawBars) {
   const canvas = document.getElementById('candleCanvas');
-  console.log('Canvas element:', canvas);
-  
-  if (!canvas) {
-    console.error('Canvas not found!');
-    return;
-  }
-  
-  const rect = canvas.parentElement.getBoundingClientRect();
-  console.log('Canvas parent rect:', rect);
-  
+  if (!canvas) return;
+
+  // Normalize API fields in case your backend uses open/high/low/close instead of o/h/l/c
+  const bars = rawBars
+    .map(b => ({
+      t: b.t || b.timestamp || b.time,
+      o: Number(b.o ?? b.open),
+      h: Number(b.h ?? b.high),
+      l: Number(b.l ?? b.low),
+      c: Number(b.c ?? b.close),
+      v: Number(b.v ?? b.volume ?? 0)
+    }))
+    .filter(b =>
+      Number.isFinite(b.o) &&
+      Number.isFinite(b.h) &&
+      Number.isFinite(b.l) &&
+      Number.isFinite(b.c)
+    );
+
+  console.table(bars.slice(0, 5));
+
+  if (bars.length < 2) return;
+
+  const parent = canvas.parentElement;
+  const rect = parent.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
-  
-  console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
-  
+
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+
   const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
   const w = rect.width;
   const h = rect.height;
-  
-  // Clear
+
   ctx.clearRect(0, 0, w, h);
-  
-  if (!bars || bars.length < 2) {
-    console.warn('Not enough bars:', bars?.length);
-    return;
-  }
-  
-  console.log('Rendering', bars.length, 'candles');
-  
-  // Extract OHLCV
-  const opens = bars.map(b => +b.o);
-  const highs = bars.map(b => +b.h);
-  const lows = bars.map(b => +b.l);
-  const closes = bars.map(b => +b.c);
+
+  const padding = {
+    top: 12,
+    right: 54,
+    bottom: 24,
+    left: 8
+  };
+
+  const gap = 10;
+  const volumeHeight = Math.round(h * 0.22);
+  const priceTop = padding.top;
+  const priceBottom = h - padding.bottom - volumeHeight - gap;
+  const priceHeight = priceBottom - priceTop;
+
+  const volumeTop = priceBottom + gap;
+  const volumeBottom = h - padding.bottom;
+
+  const chartLeft = padding.left;
+  const chartRight = w - padding.right;
+  const chartWidth = chartRight - chartLeft;
+
+  const highs = bars.map(b => b.h);
+  const lows = bars.map(b => b.l);
   const vols = bars.map(b => b.v || 0);
-  
-  // Layout: price chart on top, volume on bottom
-  const padding = { top: 10, left: 50, right: 50, between: 8 };
-  const volumeHeight = h * 0.18;
-  const priceHeight = h - volumeHeight - padding.between - padding.top - 40;
-  
-  const chartWidth = w - padding.left - padding.right;
-  const candleWidth = Math.max(3, Math.floor(chartWidth / bars.length * 0.7));
-  const candleSpacing = Math.floor(chartWidth / bars.length);
-  
-  // Price scale (candles)
-  const allPrices = [...highs, ...lows];
-  const minPrice = Math.min(...allPrices);
-  const maxPrice = Math.max(...allPrices);
-  const priceRange = maxPrice - minPrice || 1;
-  
-  // Volume scale (separate)
+
+  let minPrice = Math.min(...lows);
+  let maxPrice = Math.max(...highs);
+
+  // Add padding so candles do not touch top/bottom
+  const priceRangeRaw = maxPrice - minPrice || 1;
+  const pricePad = priceRangeRaw * 0.08;
+  minPrice -= pricePad;
+  maxPrice += pricePad;
+
+  const priceRange = maxPrice - minPrice;
   const maxVol = Math.max(...vols) || 1;
-  
-  console.log('Price range:', minPrice, '-', maxPrice);
-  console.log('Max volume:', maxVol);
-  
-  // Scaling functions
-  const priceToY = p => padding.top + priceHeight - ((p - minPrice) / priceRange) * priceHeight;
-  const volToH = v => (v / maxVol) * volumeHeight;
-  
-  // Volume baseline
-  const volumeTop = padding.top + priceHeight + padding.between;
-  const volumeBottom = volumeTop + volumeHeight;
-  
-  // Draw price gridlines
+
+  const xStep = chartWidth / bars.length;
+  const candleWidth = Math.max(2, Math.min(12, xStep * 0.62));
+
+  const priceToY = price => {
+    return priceTop + ((maxPrice - price) / priceRange) * priceHeight;
+  };
+
+  const volumeToHeight = volume => {
+    return (volume / maxVol) * (volumeHeight * 0.9);
+  };
+
+  // Background grid
   ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-  ctx.lineWidth = 0.5;
+  ctx.lineWidth = 1;
+
   for (let i = 0; i <= 4; i++) {
-    const y = padding.top + (priceHeight / 4) * i;
+    const y = priceTop + (priceHeight / 4) * i;
     ctx.beginPath();
-    ctx.moveTo(padding.left, y);
-    ctx.lineTo(w - padding.right, y);
+    ctx.moveTo(chartLeft, y);
+    ctx.lineTo(chartRight, y);
     ctx.stroke();
   }
-  
-  // Draw volume bars (grow upward from baseline)
+
+  // Divider between price and volume
+  ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+  ctx.beginPath();
+  ctx.moveTo(chartLeft, priceBottom);
+  ctx.lineTo(chartRight, priceBottom);
+  ctx.stroke();
+
+  // Volume bars
   bars.forEach((bar, i) => {
-    const x = padding.left + i * candleSpacing + candleSpacing / 2;
-    const volH = volToH(vols[i]);
-    const isUp = closes[i] >= opens[i];
-    ctx.fillStyle = isUp ? 'rgba(50,255,126,0.25)' : 'rgba(255,140,66,0.25)';
+    const x = chartLeft + i * xStep + xStep / 2;
+    const volH = volumeToHeight(bar.v);
+    const up = bar.c >= bar.o;
+
+    ctx.fillStyle = up
+      ? 'rgba(50,255,126,0.28)'
+      : 'rgba(255,140,66,0.28)';
+
     ctx.fillRect(
-      x - candleWidth * 0.35,
+      x - candleWidth / 2,
       volumeBottom - volH,
-      candleWidth * 0.7,
+      candleWidth,
       volH
     );
   });
-  
-  // Draw candles (on price scale)
+
+  // Candles
   bars.forEach((bar, i) => {
-    const x = padding.left + i * candleSpacing + candleSpacing / 2;
-    const o = opens[i];
-    const c = closes[i];
-    const h = highs[i];
-    const l = lows[i];
-    const isUp = c >= o;
-    
-    const color = isUp ? '#32ff7e' : '#ff8c42';
-    const openY = priceToY(o);
-    const closeY = priceToY(c);
-    const highY = priceToY(h);
-    const lowY = priceToY(l);
-    
-    // Draw wick (thin line from high to low)
+    const x = chartLeft + i * xStep + xStep / 2;
+    const up = bar.c >= bar.o;
+    const color = up ? '#32ff7e' : '#ff8c42';
+
+    const openY = priceToY(bar.o);
+    const closeY = priceToY(bar.c);
+    const highY = priceToY(bar.h);
+    const lowY = priceToY(bar.l);
+
+    // Wick
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(x, highY);
     ctx.lineTo(x, lowY);
     ctx.stroke();
-    
-    // Draw body (open to close rectangle)
+
+    // Body
     const bodyTop = Math.min(openY, closeY);
-    const bodyBottom = Math.max(openY, closeY);
-    const bodyH = Math.max(1, bodyBottom - bodyTop);
-    
-    ctx.fillStyle = color;
-    ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyH);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x - candleWidth / 2, bodyTop, candleWidth, bodyH);
-  });
-  
-  // Draw price labels on left (price axis)
-  ctx.fillStyle = '#888892';
-  ctx.font = 'bold 10px system-ui';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'middle';
-  for (let i = 0; i <= 4; i++) {
-    const price = maxPrice - (priceRange / 4) * i;
-	const y = padding.top + (priceHeight / 4) * i;
-    ctx.fillText('$' + price.toFixed(2), padding.left - 8, y);
-  }
-  
-  // Draw volume labels on left (volume axis)
-  ctx.fillStyle = '#555560';
-  ctx.font = '9px system-ui';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'middle';
-  for (let i = 0; i <= 2; i++) {
-    const volLabel = Math.round((maxVol / 2) * i);
-    const y = volumeBottom - (volumeHeight / 2) * i;
-    ctx.fillText(volLabel / 1e6 + 'M', padding.left - 8, y);
-  }
-  
-  // Draw time labels on bottom
-  ctx.fillStyle = '#555560';
-  ctx.font = '9px system-ui';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  const step = Math.max(1, Math.floor(bars.length / 6));
-  bars.forEach((bar, i) => {
-    if (i % step === 0) {
-      const d = new Date(bar.t);
-      let label;
-      if (currentTF === '1Day') {
-        label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      } else {
-        label = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      }
-      const x = padding.left + i * candleSpacing + candleSpacing / 2;
-      const y = h - 25;
-      ctx.fillText(label, x, y);
+    const bodyHeight = Math.max(1, Math.abs(closeY - openY));
+
+    if (up) {
+      // Hollow/outlined green candle
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(
+        x - candleWidth / 2,
+        bodyTop,
+        candleWidth,
+        bodyHeight
+      );
+    } else {
+      // Filled red candle
+      ctx.fillStyle = color;
+      ctx.fillRect(
+        x - candleWidth / 2,
+        bodyTop,
+        candleWidth,
+        bodyHeight
+      );
     }
   });
-  
-  console.log('Canvas render complete');
+
+  // Price labels on right
+  ctx.fillStyle = '#777';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+
+  for (let i = 0; i <= 4; i++) {
+    const price = maxPrice - (priceRange / 4) * i;
+    const y = priceTop + (priceHeight / 4) * i;
+    ctx.fillText('$' + price.toFixed(2), chartRight + 8, y);
+  }
+
+  // Time labels
+  ctx.fillStyle = '#666';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  const labelStep = Math.max(1, Math.floor(bars.length / 6));
+
+  bars.forEach((bar, i) => {
+    if (i % labelStep !== 0) return;
+
+    const d = new Date(bar.t);
+    const label =
+      currentTF === '1Day'
+        ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+    const x = chartLeft + i * xStep + xStep / 2;
+    ctx.fillText(label, x, volumeBottom + 6);
+  });
 }
 
 function generateMockBars(base, count, tf) {
