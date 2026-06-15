@@ -364,22 +364,14 @@ function renderCandleChart(rawBars) {
     return;
   }
 
-  // Normalize and validate bars
-  const bars = rawBars
-    .map(b => ({
-      t: b.t || b.timestamp,
-      o: Number(b.o || b.open),
-      h: Number(b.h || b.high),
-      l: Number(b.l || b.low),
-      c: Number(b.c || b.close),
-      v: Number(b.v || b.volume || 0)
-    }))
-    .filter(b => !isNaN(b.o) && !isNaN(b.h) && !isNaN(b.l) && !isNaN(b.c) && b.o > 0);
-
-  console.log('Normalized bars sample:', bars.slice(0, 2));
+  // Just parse the bars as-is, no normalization
+  const bars = rawBars.filter(b => b && b.o && b.h && b.l && b.c);
+  
+  console.log('Bars to plot:', bars.length);
+  console.log('First bar:', bars[0]);
 
   if (bars.length < 2) {
-    console.warn('Not enough valid bars:', bars.length);
+    console.warn('Not enough bars');
     return;
   }
 
@@ -407,39 +399,29 @@ function renderCandleChart(rawBars) {
   const priceBottom = h - padding.bottom - volumeHeight - gap;
   const priceHeight = priceBottom - priceTop;
 
-  const volumeTop = priceBottom + gap;
   const volumeBottom = h - padding.bottom;
 
   const chartLeft = padding.left;
   const chartRight = w - padding.right;
   const chartWidth = chartRight - chartLeft;
 
-  // Get price range from HIGH/LOW (not close)
+  // Auto-scale: use actual HIGH and LOW from visible data
   const highs = bars.map(b => b.h);
   const lows = bars.map(b => b.l);
-  const vols = bars.map(b => b.v);
+  const vols = bars.map(b => b.v || 0);
 
-  let minPrice = Math.min(...lows);
-  let maxPrice = Math.max(...highs);
-  
-  console.log('Raw price range:', minPrice, '-', maxPrice);
-
-  // Add 8% padding
-  const priceRangeRaw = maxPrice - minPrice || 1;
-  const pricePad = priceRangeRaw * 0.08;
-  minPrice -= pricePad;
-  maxPrice += pricePad;
-
-  const priceRange = maxPrice - minPrice;
+  const minPrice = Math.min(...lows);
+  const maxPrice = Math.max(...highs);
+  const priceRange = maxPrice - minPrice || 1;
   const maxVol = Math.max(...vols) || 1;
 
-  console.log('Adjusted price range:', minPrice, '-', maxPrice);
-  console.log('Max volume:', maxVol);
+  console.log('Price range:', minPrice, '-', maxPrice);
+  console.log('Volume range: 0 -', maxVol);
 
   const xStep = chartWidth / bars.length;
   const candleWidth = Math.max(2, Math.min(12, xStep * 0.62));
 
-  // Scale functions
+  // Scale functions - no padding, just raw min/max
   const priceToY = price => priceTop + ((maxPrice - price) / priceRange) * priceHeight;
   const volumeToHeight = volume => (volume / maxVol) * (volumeHeight * 0.9);
 
@@ -454,7 +436,7 @@ function renderCandleChart(rawBars) {
     ctx.stroke();
   }
 
-  // Divider
+  // Divider between price and volume
   ctx.strokeStyle = 'rgba(255,255,255,0.10)';
   ctx.beginPath();
   ctx.moveTo(chartLeft, priceBottom);
@@ -464,7 +446,7 @@ function renderCandleChart(rawBars) {
   // Draw volume bars
   bars.forEach((bar, i) => {
     const x = chartLeft + i * xStep + xStep / 2;
-    const volH = volumeToHeight(bar.v);
+    const volH = volumeToHeight(bar.v || 0);
     const up = bar.c >= bar.o;
 
     ctx.fillStyle = up
@@ -485,7 +467,7 @@ function renderCandleChart(rawBars) {
     const highY = priceToY(bar.h);
     const lowY = priceToY(bar.l);
 
-    // Wick
+    // Wick (high to low)
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -493,7 +475,7 @@ function renderCandleChart(rawBars) {
     ctx.lineTo(x, lowY);
     ctx.stroke();
 
-    // Body
+    // Body (open to close)
     const bodyTop = Math.min(openY, closeY);
     const bodyHeight = Math.max(1, Math.abs(closeY - openY));
 
@@ -510,8 +492,8 @@ function renderCandleChart(rawBars) {
   });
 
   // Price labels (right axis)
-  ctx.fillStyle = '#777';
-  ctx.font = '10px system-ui';
+  ctx.fillStyle = '#999';
+  ctx.font = '11px system-ui';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
 
@@ -541,7 +523,7 @@ function renderCandleChart(rawBars) {
     ctx.fillText(label, x, volumeBottom + 6);
   });
 
-  console.log('Chart rendered successfully');
+  console.log('Chart rendered');
 }
 
 function generateMockBars(base, count, tf) {
