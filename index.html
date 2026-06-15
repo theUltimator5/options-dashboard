@@ -342,15 +342,27 @@ async function buildPriceChart(sym, base) {
   }
 
   if (!bars || bars.length === 0) bars = generateMockBars(base, currentLimit, currentTF);
+  console.log('Building price chart with', bars.length, 'bars');
   renderCandleChart(bars);
 }
 
 function renderCandleChart(bars) {
   const canvas = document.getElementById('candleCanvas');
+  console.log('Canvas element:', canvas);
+  
+  if (!canvas) {
+    console.error('Canvas not found!');
+    return;
+  }
+  
   const rect = canvas.parentElement.getBoundingClientRect();
+  console.log('Canvas parent rect:', rect);
+  
   const dpr = window.devicePixelRatio || 1;
   canvas.width = rect.width * dpr;
   canvas.height = rect.height * dpr;
+  
+  console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
   
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
@@ -361,7 +373,12 @@ function renderCandleChart(bars) {
   ctx.fillStyle = 'transparent';
   ctx.clearRect(0, 0, w, h);
   
-  if (!bars || bars.length < 2) return;
+  if (!bars || bars.length < 2) {
+    console.warn('Not enough bars:', bars?.length);
+    return;
+  }
+  
+  console.log('Rendering', bars.length, 'candles');
   
   // Extract OHLCV
   const opens = bars.map(b => +b.o);
@@ -377,6 +394,8 @@ function renderCandleChart(bars) {
   const priceRange = maxPrice - minPrice || 1;
   const maxVol = Math.max(...vols) || 1;
   
+  console.log('Price range:', minPrice, '-', maxPrice);
+  
   // Sizing
   const volumeHeight = h * 0.18;
   const priceHeight = h - volumeHeight - 40;
@@ -384,6 +403,8 @@ function renderCandleChart(bars) {
   const chartWidth = w - padding.left - padding.right;
   const candleWidth = Math.max(3, Math.floor(chartWidth / bars.length * 0.7));
   const candleSpacing = Math.floor(chartWidth / bars.length);
+  
+  console.log('Candle width:', candleWidth, 'spacing:', candleSpacing);
   
   // Scaling functions
   const priceToY = p => padding.top + priceHeight - ((p - minPrice) / priceRange) * priceHeight;
@@ -475,6 +496,8 @@ function renderCandleChart(bars) {
       ctx.fillText(label, x, y);
     }
   });
+  
+  console.log('Canvas render complete');
 }
 
 function generateMockBars(base, count, tf) {
