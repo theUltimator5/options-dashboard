@@ -17,10 +17,10 @@
       --text: #e8e8ec;
       --muted: #888892;
       --dim: #555560;
-      --green: #2ecc71;
-      --green-bg: rgba(46,204,113,0.12);
-      --red: #e74c3c;
-      --red-bg: rgba(231,76,60,0.12);
+      --green: #32ff7e;
+      --green-bg: rgba(50,255,126,0.12);
+      --orange: #ff8c42;
+      --orange-bg: rgba(255,140,66,0.12);
       --blue: #4a9eff;
       --blue-bg: rgba(74,158,255,0.12);
       --amber: #f5a623;
@@ -50,7 +50,7 @@
     .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
     .stat-val { font-size: 14px; font-weight: 600; margin-top: 1px; }
     .up { color: var(--green); }
-    .down { color: var(--red); }
+    .down { color: var(--orange); }
     .badge { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
     .badge-live { background: var(--green-bg); color: var(--green); border: 1px solid rgba(46,204,113,0.3); }
     .badge-mock { background: var(--amber-bg); color: var(--amber); border: 1px solid rgba(245,166,35,0.3); }
@@ -74,7 +74,8 @@
     .btn-xs.active { background: var(--blue-bg); color: var(--blue); border-color: rgba(74,158,255,0.3); }
 
     /* PRICE CHART */
-    #priceWrap { position: relative; height: 200px; }
+    #priceWrap { position: relative; height: 280px; background: linear-gradient(180deg, rgba(255,255,255,0.01) 0%, transparent 100%); border-radius: var(--radius); overflow: hidden; }
+    #candleCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
     /* OPTIONS CHAIN TABLE */
     .chain-wrap { max-height: 280px; overflow-y: auto; }
@@ -84,14 +85,14 @@
     table { width: 100%; border-collapse: collapse; font-size: 11px; }
     th { font-size: 10px; font-weight: 600; color: var(--dim); text-align: right; padding: 3px 6px; position: sticky; top: 0; background: var(--bg2); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .04em; }
     th.call-hdr { color: var(--green); }
-    th.put-hdr { color: var(--red); }
+    th.put-hdr { color: var(--orange); }
     th.strike-hdr { text-align: center; color: var(--muted); }
     td { padding: 4px 6px; text-align: right; color: var(--text); border-bottom: 1px solid rgba(255,255,255,0.03); }
     tr:hover td { background: rgba(255,255,255,0.03); }
     tr.atm td { background: var(--amber-bg) !important; }
     tr.atm td.strike-cell { color: var(--amber); font-weight: 700; }
-    .call-val { color: rgba(46,204,113,0.85); }
-    .put-val { color: rgba(231,76,60,0.85); }
+    .call-val { color: rgba(50,255,126,0.85); }
+    .put-val { color: rgba(255,140,66,0.85); }
     .strike-cell { text-align: center; font-weight: 600; color: var(--text); background: rgba(255,255,255,0.03); }
 
     /* EXPOSURE CHART */
@@ -101,8 +102,8 @@
     .unusual-item { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
     .unusual-item:last-child { border-bottom: none; }
     .tag { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 700; min-width: 36px; text-align: center; }
-    .tag-call { background: var(--green-bg); color: var(--green); border: 1px solid rgba(46,204,113,0.2); }
-    .tag-put { background: var(--red-bg); color: var(--red); border: 1px solid rgba(231,76,60,0.2); }
+    .tag-call { background: var(--green-bg); color: var(--green); border: 1px solid rgba(50,255,126,0.2); }
+    .tag-put { background: var(--orange-bg); color: var(--orange); border: 1px solid rgba(255,140,66,0.2); }
     .tag-sweep { background: var(--blue-bg); color: var(--blue); border: 1px solid rgba(74,158,255,0.2); }
     .tag-block { background: var(--purple-bg); color: var(--purple); border: 1px solid rgba(167,139,250,0.2); }
     .u-ticker { font-weight: 700; min-width: 40px; color: var(--text); }
@@ -110,7 +111,7 @@
     .u-prem { font-weight: 700; min-width: 64px; text-align: right; color: var(--text); }
     .u-sent { min-width: 60px; text-align: right; font-weight: 600; font-size: 11px; }
     .bull { color: var(--green); }
-    .bear { color: var(--red); }
+    .bear { color: var(--orange); }
     .neutral { color: var(--muted); }
     .time-ago { font-size: 10px; color: var(--dim); min-width: 40px; text-align: right; }
 
@@ -179,7 +180,7 @@
       </div>
     </div>
     <div class="panel-body" style="padding:10px">
-      <div id="priceWrap"><canvas id="priceChart" role="img" aria-label="Candlestick price chart">Price chart loading</canvas></div>
+      <div id="priceWrap"><canvas id="candleCanvas" role="img" aria-label="Candlestick price chart with volume">Price chart loading</canvas></div>
     </div>
   </div>
 
@@ -341,40 +342,123 @@ async function buildPriceChart(sym, base) {
   }
 
   if (!bars || bars.length === 0) bars = generateMockBars(base, currentLimit, currentTF);
+  renderCandleChart(bars);
+}
 
-  const labels = bars.map(b => {
-    const d = new Date(b.t);
-    if (currentTF === '1Day') return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+function renderCandleChart(bars) {
+  const canvas = document.getElementById('candleCanvas');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * window.devicePixelRatio;
+  canvas.height = rect.height * window.devicePixelRatio;
+  
+  const ctx = canvas.getContext('2d');
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  const w = rect.width;
+  const h = rect.height;
+  ctx.fillStyle = 'transparent';
+  ctx.fillRect(0, 0, w, h);
+  
+  if (!bars || bars.length === 0) return;
+  
+  // Extract OHLCV
+  const opens = bars.map(b => +b.o);
+  const highs = bars.map(b => +b.h);
+  const lows = bars.map(b => +b.l);
+  const closes = bars.map(b => +b.c);
+  const vols = bars.map(b => b.v || 0);
+  
+  // Calculate min/max for price axis
+  const allPrices = [...highs, ...lows];
+  const minPrice = Math.min(...allPrices);
+  const maxPrice = Math.max(...allPrices);
+  const priceRange = maxPrice - minPrice;
+  const maxVol = Math.max(...vols) || 1;
+  
+  // Sizing
+  const volumeHeight = h * 0.15;
+  const priceHeight = h - volumeHeight;
+  const padding = 40;
+  const chartWidth = w - padding * 2;
+  const candleWidth = Math.max(2, Math.floor(chartWidth / bars.length * 0.8));
+  const candleSpacing = Math.floor(chartWidth / bars.length);
+  
+  // Helper: price to pixel
+  const priceToY = p => priceHeight - ((p - minPrice) / priceRange) * priceHeight + volumeHeight;
+  const volToH = v => (v / maxVol) * (volumeHeight * 0.85);
+  
+  // Draw gridlines
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = volumeHeight + (priceHeight / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding, y);
+    ctx.lineTo(w - padding, y);
+    ctx.stroke();
+  }
+  
+  // Draw volume bars
+  bars.forEach((bar, i) => {
+    const x = padding + i * candleSpacing + candleSpacing / 2;
+    const volH = volToH(vols[i]);
+    const isUp = closes[i] >= opens[i];
+    ctx.fillStyle = isUp ? 'rgba(50,255,126,0.3)' : 'rgba(255,140,66,0.3)';
+    ctx.fillRect(x - candleWidth * 0.3, h - volH, candleWidth * 0.6, volH);
   });
-
-  const opens = bars.map(b => +b.o.toFixed(2));
-  const highs = bars.map(b => +b.h.toFixed(2));
-  const lows = bars.map(b => +b.l.toFixed(2));
-  const closes = bars.map(b => +b.c.toFixed(2));
-  const colors = closes.map((c, i) => c >= opens[i] ? '#2ecc71' : '#e74c3c');
-
-  if (priceChartInst) priceChartInst.destroy();
-  const ctx = document.getElementById('priceChart').getContext('2d');
-  priceChartInst = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Wick', data: highs.map((h, i) => h - lows[i]), base: lows, backgroundColor: colors.map(c => c + '44'), borderColor: colors, borderWidth: 1, borderSkipped: false },
-        { label: 'Body', data: closes.map((c, i) => Math.max(Math.abs(c - opens[i]), 0.05)), base: opens.map((o, i) => Math.min(o, closes[i])), backgroundColor: colors, borderColor: colors, borderWidth: 0, borderSkipped: false },
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => { const i = ctx.dataIndex; return `O: ${opens[i]}  H: ${highs[i]}  L: ${lows[i]}  C: ${closes[i]}`; } } }
-      },
-      scales: {
-        x: { ticks: { font: { size: 9 }, color: '#666', maxRotation: 45, autoSkip: true, maxTicksLimit: 10 }, grid: { display: false }, border: { color: 'rgba(255,255,255,0.06)' } },
-        y: { position: 'right', ticks: { font: { size: 9 }, color: '#666', callback: v => '$' + v.toFixed(0) }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { color: 'rgba(255,255,255,0.06)' } }
-      }
+  
+  // Draw candles
+  bars.forEach((bar, i) => {
+    const x = padding + i * candleSpacing + candleSpacing / 2;
+    const o = opens[i];
+    const c = closes[i];
+    const h = highs[i];
+    const l = lows[i];
+    const isUp = c >= o;
+    
+    const color = isUp ? '#32ff7e' : '#ff8c42';
+    const openY = priceToY(o);
+    const closeY = priceToY(c);
+    const highY = priceToY(h);
+    const lowY = priceToY(l);
+    
+    // Wick (high/low line)
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, highY);
+    ctx.lineTo(x, lowY);
+    ctx.stroke();
+    
+    // Body (open/close)
+    const bodyTop = Math.min(openY, closeY);
+    const bodyH = Math.abs(closeY - openY) || 1;
+    ctx.fillStyle = color;
+    ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyH);
+    ctx.strokeStyle = color;
+    ctx.strokeRect(x - candleWidth / 2, bodyTop, candleWidth, bodyH);
+  });
+  
+  // Draw price labels on right axis
+  ctx.fillStyle = '#888892';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'left';
+  for (let i = 0; i <= 4; i++) {
+    const price = minPrice + (priceRange / 4) * i;
+    const y = volumeHeight + (priceHeight / 4) * i;
+    ctx.fillText('$' + price.toFixed(0), w - padding + 8, y + 3);
+  }
+  
+  // Draw time labels on bottom
+  ctx.fillStyle = '#555560';
+  ctx.font = '9px system-ui';
+  ctx.textAlign = 'center';
+  const step = Math.max(1, Math.floor(bars.length / 6));
+  bars.forEach((bar, i) => {
+    if (i % step === 0) {
+      const d = new Date(bar.t);
+      const label = currentTF === '1Day' ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const x = padding + i * candleSpacing + candleSpacing / 2;
+      ctx.fillText(label, x, h - 4);
     }
   });
 }
@@ -512,8 +596,8 @@ function renderExposureChart(labels, callOIs, putOIs) {
     data: {
       labels,
       datasets: [
-        { label: 'Calls OI', data: callOIs, backgroundColor: 'rgba(46,204,113,0.5)', borderColor: '#2ecc71', borderWidth: 1 },
-        { label: 'Puts OI', data: putOIs, backgroundColor: 'rgba(231,76,60,0.5)', borderColor: '#e74c3c', borderWidth: 1 },
+        { label: 'Calls OI', data: callOIs, backgroundColor: 'rgba(50,255,126,0.5)', borderColor: '#32ff7e', borderWidth: 1 },
+        { label: 'Puts OI', data: putOIs, backgroundColor: 'rgba(255,140,66,0.5)', borderColor: '#ff8c42', borderWidth: 1 },
       ]
     },
     options: {
