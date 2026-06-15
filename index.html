@@ -370,7 +370,6 @@ function renderCandleChart(bars) {
   const h = rect.height;
   
   // Clear
-  ctx.fillStyle = 'transparent';
   ctx.clearRect(0, 0, w, h);
   
   if (!bars || bars.length < 2) {
@@ -387,30 +386,36 @@ function renderCandleChart(bars) {
   const closes = bars.map(b => +b.c);
   const vols = bars.map(b => b.v || 0);
   
-  // Calculate min/max for price axis
-  const allPrices = [...highs, ...lows];
-  const minPrice = Math.min(...allPrices);
-  const maxPrice = Math.max(...allPrices);
-  const priceRange = maxPrice - minPrice || 1;
-  const maxVol = Math.max(...vols) || 1;
-  
-  console.log('Price range:', minPrice, '-', maxPrice);
-  
-  // Sizing
+  // Layout: price chart on top, volume on bottom
+  const padding = { top: 10, left: 50, right: 50, between: 8 };
   const volumeHeight = h * 0.18;
-  const priceHeight = h - volumeHeight - 40;
-  const padding = { top: 10, bottom: 40, left: 50, right: 50 };
+  const priceHeight = h - volumeHeight - padding.between - padding.top - 40;
+  
   const chartWidth = w - padding.left - padding.right;
   const candleWidth = Math.max(3, Math.floor(chartWidth / bars.length * 0.7));
   const candleSpacing = Math.floor(chartWidth / bars.length);
   
-  console.log('Candle width:', candleWidth, 'spacing:', candleSpacing);
+  // Price scale (candles)
+  const allPrices = [...highs, ...lows];
+  const minPrice = Math.min(...allPrices);
+  const maxPrice = Math.max(...allPrices);
+  const priceRange = maxPrice - minPrice || 1;
+  
+  // Volume scale (separate)
+  const maxVol = Math.max(...vols) || 1;
+  
+  console.log('Price range:', minPrice, '-', maxPrice);
+  console.log('Max volume:', maxVol);
   
   // Scaling functions
   const priceToY = p => padding.top + priceHeight - ((p - minPrice) / priceRange) * priceHeight;
-  const volToH = v => (v / maxVol) * (volumeHeight * 0.9);
+  const volToH = v => (v / maxVol) * volumeHeight;
   
-  // Draw gridlines
+  // Volume baseline
+  const volumeTop = padding.top + priceHeight + padding.between;
+  const volumeBottom = volumeTop + volumeHeight;
+  
+  // Draw price gridlines
   ctx.strokeStyle = 'rgba(255,255,255,0.06)';
   ctx.lineWidth = 0.5;
   for (let i = 0; i <= 4; i++) {
@@ -421,16 +426,21 @@ function renderCandleChart(bars) {
     ctx.stroke();
   }
   
-  // Draw volume bars
+  // Draw volume bars (grow upward from baseline)
   bars.forEach((bar, i) => {
     const x = padding.left + i * candleSpacing + candleSpacing / 2;
     const volH = volToH(vols[i]);
     const isUp = closes[i] >= opens[i];
     ctx.fillStyle = isUp ? 'rgba(50,255,126,0.25)' : 'rgba(255,140,66,0.25)';
-    ctx.fillRect(x - candleWidth * 0.35, padding.top + priceHeight + 5, candleWidth * 0.7, volH);
+    ctx.fillRect(
+      x - candleWidth * 0.35,
+      volumeBottom - volH,
+      candleWidth * 0.7,
+      volH
+    );
   });
   
-  // Draw candles
+  // Draw candles (on price scale)
   bars.forEach((bar, i) => {
     const x = padding.left + i * candleSpacing + candleSpacing / 2;
     const o = opens[i];
@@ -465,7 +475,7 @@ function renderCandleChart(bars) {
     ctx.strokeRect(x - candleWidth / 2, bodyTop, candleWidth, bodyH);
   });
   
-  // Draw price labels on left
+  // Draw price labels on left (price axis)
   ctx.fillStyle = '#888892';
   ctx.font = 'bold 10px system-ui';
   ctx.textAlign = 'right';
@@ -474,6 +484,17 @@ function renderCandleChart(bars) {
     const price = minPrice + (priceRange / 4) * i;
     const y = padding.top + (priceHeight / 4) * i;
     ctx.fillText('$' + price.toFixed(2), padding.left - 8, y);
+  }
+  
+  // Draw volume labels on left (volume axis)
+  ctx.fillStyle = '#555560';
+  ctx.font = '9px system-ui';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 2; i++) {
+    const volLabel = Math.round((maxVol / 2) * i);
+    const y = volumeBottom - (volumeHeight / 2) * i;
+    ctx.fillText(volLabel / 1e6 + 'M', padding.left - 8, y);
   }
   
   // Draw time labels on bottom
@@ -492,7 +513,7 @@ function renderCandleChart(bars) {
         label = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
       }
       const x = padding.left + i * candleSpacing + candleSpacing / 2;
-      const y = padding.top + priceHeight + volumeHeight + 8;
+      const y = h - 25;
       ctx.fillText(label, x, y);
     }
   });
