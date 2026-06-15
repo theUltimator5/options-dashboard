@@ -481,8 +481,8 @@ function renderCandleChart(bars) {
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   for (let i = 0; i <= 4; i++) {
-    const price = minPrice + (priceRange / 4) * i;
-    const y = padding.top + (priceHeight / 4) * i;
+    const price = maxPrice - (priceRange / 4) * i;
+	const y = padding.top + (priceHeight / 4) * i;
     ctx.fillText('$' + price.toFixed(2), padding.left - 8, y);
   }
   
